@@ -57,7 +57,7 @@ postprocessing:
 # Vectorization Configuration
 vectorization:
   simplify_tolerance: 0.5  # meters
-  spot_area_m2: 12.5  # Standard parking spot = 2.5m × 5m
+  spot_area_m2: 30  # Accounts for spot + aisles + landscaping (realistic estimate)
   size_categories:
     small: 50  # < 50 spots
     medium: 200  # 50-200 spots

@@ -6,8 +6,15 @@ let parkingData = null;
 let parkingLayer = null;
 let heatmapLayer = null;
 let filteredData = null;
+let garageData = null;
+let garageLayer = null;
+let streetParkingData = null;
+let streetParkingLayer = null;
+let userLocationMarker = null;
 let currentView = 'map'; // 'map', 'heatmap', or 'analytics'
 let charts = {}; // Store chart instances
+let recommendationMarkers = []; // Track chatbot recommendation markers
+let recommendationData = []; // Track what each marker represents
 
 // Filter state
 let sizeFilters = {
@@ -17,12 +24,33 @@ let sizeFilters = {
 };
 let minConfidence = 0;
 let searchQuery = '';
+let showGarages = true;
+let showStreetParking = true;
 
 // Color mapping
 const SIZE_COLORS = {
     small: '#4ECDC4',
     medium: '#FFB84D',
     large: '#E74C3C'
+};
+
+// Atlanta neighborhood coordinates (center points)
+const ATLANTA_NEIGHBORHOODS = {
+    'midtown': { lat: 33.7838, lon: -84.3831, name: 'Midtown' },
+    'downtown': { lat: 33.7580, lon: -84.3900, name: 'Downtown' },
+    'buckhead': { lat: 33.8490, lon: -84.3670, name: 'Buckhead' },
+    'old fourth ward': { lat: 33.7640, lon: -84.3680, name: 'Old Fourth Ward' },
+    'virginia-highland': { lat: 33.7770, lon: -84.3500, name: 'Virginia-Highland' },
+    'virginia highland': { lat: 33.7770, lon: -84.3500, name: 'Virginia-Highland' },
+    'inman park': { lat: 33.7570, lon: -84.3520, name: 'Inman Park' },
+    'little five points': { lat: 33.7640, lon: -84.3480, name: 'Little Five Points' },
+    'west end': { lat: 33.7350, lon: -84.4170, name: 'West End' },
+    'east atlanta': { lat: 33.7370, lon: -84.3420, name: 'East Atlanta' },
+    'grant park': { lat: 33.7410, lon: -84.3700, name: 'Grant Park' },
+    'reynoldstown': { lat: 33.7460, lon: -84.3560, name: 'Reynoldstown' },
+    'cabbagetown': { lat: 33.7530, lon: -84.3630, name: 'Cabbagetown' },
+    'poncey-highland': { lat: 33.7730, lon: -84.3500, name: 'Poncey-Highland' },
+    'decatur': { lat: 33.7748, lon: -84.2963, name: 'Decatur' }
 };
 
 // Initialize map
@@ -46,7 +74,75 @@ function initMap() {
         maxZoom: 20
     }).addTo(map);
 
+    // Add current location button
+    L.Control.CurrentLocation = L.Control.extend({
+        onAdd: function(map) {
+            const btn = L.DomUtil.create('button', 'location-btn');
+            btn.innerHTML = '📍';
+            btn.title = 'Show my location';
+            btn.onclick = getCurrentLocation;
+            return btn;
+        }
+    });
+
+    L.control.currentLocation = function(opts) {
+        return new L.Control.CurrentLocation(opts);
+    }
+
+    L.control.currentLocation({ position: 'bottomright' }).addTo(map);
+
     console.log('Map initialized');
+
+    // Request location access on load
+    getCurrentLocation();
+}
+
+// Get user's current location
+function getCurrentLocation() {
+    if (!navigator.geolocation) {
+        alert('Geolocation is not supported by your browser');
+        return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+        (position) => {
+            const lat = position.coords.latitude;
+            const lon = position.coords.longitude;
+
+            // Remove existing location marker
+            if (userLocationMarker) {
+                map.removeLayer(userLocationMarker);
+            }
+
+            // Create custom icon for user location
+            const userIcon = L.divIcon({
+                html: '<div style="background: #4ECDC4; width: 20px; height: 20px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 10px rgba(78, 205, 196, 0.8);"></div>',
+                className: 'user-location-marker',
+                iconSize: [20, 20],
+                iconAnchor: [10, 10]
+            });
+
+            // Add marker at user location
+            userLocationMarker = L.marker([lat, lon], { icon: userIcon })
+                .addTo(map)
+                .bindPopup('<div class="popup-title">📍 Your Location</div>')
+                .openPopup();
+
+            // Pan and zoom to user location
+            map.setView([lat, lon], 14);
+        },
+        (error) => {
+            let message = 'Unable to retrieve your location';
+            if (error.code === 1) {
+                message = 'Location access denied. Please enable location services.';
+            } else if (error.code === 2) {
+                message = 'Location unavailable. Please try again.';
+            } else if (error.code === 3) {
+                message = 'Location request timed out. Please try again.';
+            }
+            alert(message);
+        }
+    );
 }
 
 // Load GeoJSON data
@@ -75,6 +171,218 @@ async function loadParkingData() {
         console.error('Error loading parking data:', error);
         showErrorMessage('No parking data found. Please run the pipeline first.');
     }
+}
+
+// Load garage data from Google Places
+async function loadGarageData() {
+    try {
+        const response = await fetch('../outputs/parking_garages.geojson');
+
+        if (!response.ok) {
+            console.log('No garage data found (run scripts/05_fetch_garages.py)');
+            return;
+        }
+
+        garageData = await response.json();
+        console.log('Loaded garage data:', garageData.features.length, 'garages');
+
+        // Render garages
+        renderGarages();
+
+    } catch (error) {
+        console.log('No garage data available');
+    }
+}
+
+// Load street parking data from OpenStreetMap
+async function loadStreetParkingData() {
+    try {
+        const response = await fetch('../outputs/street_parking.geojson');
+
+        if (!response.ok) {
+            console.log('No street parking data found (run scripts/06_fetch_street_parking.py)');
+            return;
+        }
+
+        streetParkingData = await response.json();
+        console.log('Loaded street parking data:', streetParkingData.features.length, 'zones');
+
+        // Render street parking
+        renderStreetParking();
+
+    } catch (error) {
+        console.log('No street parking data available');
+    }
+}
+
+// Render garage markers on map
+function renderGarages() {
+    if (!garageData || !showGarages) {
+        if (garageLayer) {
+            map.removeLayer(garageLayer);
+        }
+        return;
+    }
+
+    // Remove existing layer
+    if (garageLayer) {
+        map.removeLayer(garageLayer);
+    }
+
+    // Create custom garage icon
+    const garageIcon = L.divIcon({
+        html: '<div style="background: #9333EA; width: 28px; height: 28px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; font-size: 16px;">🅿️</div>',
+        className: 'garage-marker',
+        iconSize: [28, 28],
+        iconAnchor: [14, 14]
+    });
+
+    garageLayer = L.geoJSON(garageData, {
+        pointToLayer: (feature, latlng) => {
+            return L.marker(latlng, { icon: garageIcon });
+        },
+        onEachFeature: (feature, layer) => {
+            const props = feature.properties;
+
+            // Generate stars for rating
+            const rating = props.rating || 0;
+            const stars = '⭐'.repeat(Math.round(rating));
+
+            // Price level to $ symbols
+            const priceLevel = props.price_level;
+            let priceSymbols = 'N/A';
+            if (priceLevel !== null && priceLevel !== undefined) {
+                priceSymbols = '$'.repeat(Math.max(1, priceLevel + 1));
+            }
+
+            // Estimated pricing
+            const estimatedHourly = props.estimated_hourly || 'N/A';
+            const estimatedDaily = props.estimated_daily || 'N/A';
+
+            const popupContent = `
+                <div class="popup-title">🏢 ${props.name || 'Parking Garage'}</div>
+                <div class="popup-info">
+                    <strong>Type:</strong> Parking Garage<br>
+                    <strong>Rating:</strong> ${rating ? rating.toFixed(1) : 'N/A'}/5.0 ${stars}<br>
+                    <strong>Reviews:</strong> ${(props.total_ratings || 0).toLocaleString()}<br>
+                    <strong>Price Level:</strong> ${priceSymbols} (${props.price_description || 'Unknown'})<br>
+                    <strong>Est. Hourly:</strong> ${estimatedHourly}<br>
+                    <strong>Est. Daily Max:</strong> ${estimatedDaily}<br>
+                    ${props.address ? `<strong>Address:</strong> ${props.address}<br>` : ''}
+                    ${props.phone ? `<strong>Phone:</strong> ${props.phone}<br>` : ''}
+                    ${props.website ? `<br><a href="${props.website}" target="_blank" style="color: #4ECDC4;">Visit Website →</a><br>` : ''}
+                    <button onclick="window.open('https://www.google.com/maps/dir/?api=1&destination=${layer.getLatLng().lat},${layer.getLatLng().lng}', '_blank')"
+                            style="margin-top: 10px; width: 100%; padding: 8px 12px; background: #4ECDC4; border: none; border-radius: 6px; color: white; font-weight: 600; cursor: pointer; font-size: 13px;">
+                        📍 Get Directions
+                    </button>
+                </div>
+            `;
+            layer.bindPopup(popupContent, { maxWidth: 300 });
+
+            // Add hover effect
+            layer.on('mouseover', function() {
+                this.setIcon(L.divIcon({
+                    html: '<div style="background: #A855F7; width: 32px; height: 32px; border-radius: 50%; border: 3px solid white; box-shadow: 0 4px 12px rgba(168,85,247,0.5); display: flex; align-items: center; justify-content: center; font-size: 18px; transform: scale(1.1);">🅿️</div>',
+                    className: 'garage-marker',
+                    iconSize: [32, 32],
+                    iconAnchor: [16, 16]
+                }));
+            });
+
+            layer.on('mouseout', function() {
+                this.setIcon(garageIcon);
+            });
+        }
+    }).addTo(map);
+}
+
+// Render street parking zones on map
+function renderStreetParking() {
+    if (!streetParkingData || !showStreetParking) {
+        if (streetParkingLayer) {
+            map.removeLayer(streetParkingLayer);
+        }
+        return;
+    }
+
+    // Remove existing layer
+    if (streetParkingLayer) {
+        map.removeLayer(streetParkingLayer);
+    }
+
+    streetParkingLayer = L.geoJSON(streetParkingData, {
+        style: (feature) => {
+            const occupancy = feature.properties.occupancy_rate || 0;
+
+            // Color based on occupancy: green (low), yellow (medium), red (high)
+            let color;
+            if (occupancy < 40) {
+                color = '#10B981'; // Green - low occupancy (more available)
+            } else if (occupancy < 70) {
+                color = '#F59E0B'; // Yellow - medium occupancy
+            } else {
+                color = '#EF4444'; // Red - high occupancy (less available)
+            }
+
+            return {
+                color: color,
+                weight: 4,
+                opacity: 0.8,
+                lineCap: 'round'
+            };
+        },
+        onEachFeature: (feature, layer) => {
+            const props = feature.properties;
+            const occupancy = props.occupancy_rate || 0;
+
+            // Availability indicator
+            let availabilityIcon = '🟢';
+            let availabilityText = 'Good availability';
+            if (occupancy >= 70) {
+                availabilityIcon = '🔴';
+                availabilityText = 'Limited availability';
+            } else if (occupancy >= 40) {
+                availabilityIcon = '🟡';
+                availabilityText = 'Moderate availability';
+            }
+
+            const popupContent = `
+                <div class="popup-title">🅿️ ${props.name || 'Street Parking'}</div>
+                <div class="popup-info">
+                    <strong>Type:</strong> Street Parking Zone<br>
+                    <strong>Street:</strong> ${props.street || 'Unknown'}<br>
+                    <strong>Total Spaces:</strong> ${props.total_spaces || 'N/A'}<br>
+                    <strong>Available:</strong> ${props.available || 0} spots<br>
+                    <strong>Occupancy:</strong> ${occupancy.toFixed(1)}% ${availabilityIcon}<br>
+                    <strong>Status:</strong> ${availabilityText}<br>
+                    <strong>Hourly Rate:</strong> ${props.hourly_rate || 'N/A'}<br>
+                    <strong>Time Limit:</strong> ${props.time_limit || 'N/A'}<br>
+                    <strong>Payment:</strong> ${(props.payment_methods || []).join(', ')}<br>
+                    <br>
+                    <div style="background: rgba(16, 185, 129, 0.1); padding: 8px; border-radius: 4px; font-size: 11px; color: #9CA3AF;">
+                        💡 <strong>Availability estimated from typical occupancy patterns.</strong><br>
+                        For real-time updates, integrate with ParkMobile or city APIs.
+                    </div>
+                </div>
+            `;
+            layer.bindPopup(popupContent, { maxWidth: 300 });
+
+            // Add hover effect
+            layer.on('mouseover', function() {
+                this.setStyle({
+                    weight: 6,
+                    opacity: 1.0
+                });
+            });
+
+            layer.on('mouseout', function() {
+                this.setStyle({
+                    weight: 4,
+                    opacity: 0.8
+                });
+            });
+        }
+    }).addTo(map);
 }
 
 // Render parking lots on map
@@ -497,7 +805,70 @@ function setupEventListeners() {
         searchQuery = e.target.value;
         applyFilters();
     });
+
+    // Garage toggle
+    const garageToggle = document.getElementById('show-garages');
+    if (garageToggle) {
+        garageToggle.addEventListener('change', (e) => {
+            showGarages = e.target.checked;
+            renderGarages();
+        });
+    }
+
+    // Street parking toggle
+    const streetParkingToggle = document.getElementById('show-street-parking');
+    if (streetParkingToggle) {
+        streetParkingToggle.addEventListener('change', (e) => {
+            showStreetParking = e.target.checked;
+            renderStreetParking();
+        });
+    }
+
+    // Chatbot toggle
+    const chatbotToggle = document.getElementById('chatbot-toggle');
+    const chatbotPanel = document.getElementById('chatbot-panel');
+    const chatbotClose = document.getElementById('chatbot-close');
+
+    if (chatbotToggle && chatbotPanel) {
+        chatbotToggle.addEventListener('click', () => {
+            chatbotPanel.classList.add('open');
+            chatbotToggle.style.display = 'none';
+        });
+
+        chatbotClose.addEventListener('click', () => {
+            chatbotPanel.classList.remove('open');
+            chatbotToggle.style.display = 'flex';
+        });
+    }
+
+    // Chatbot send message
+    const chatbotInput = document.getElementById('chatbot-input');
+    const chatbotSend = document.getElementById('chatbot-send');
+
+    if (chatbotSend && chatbotInput) {
+        chatbotSend.addEventListener('click', () => {
+            sendChatMessage();
+        });
+
+        chatbotInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendChatMessage();
+            }
+        });
+    }
+
+    // Suggestion buttons
+    document.querySelectorAll('.suggestion-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const query = btn.dataset.query;
+            chatbotInput.value = query;
+            sendChatMessage();
+        });
+    });
 }
+
+// Send chat message
+// Old chatbot functions removed - now using chatbot.js with RAG API
 
 // Show error message
 function showErrorMessage(message) {
@@ -534,6 +905,107 @@ function showErrorMessage(message) {
     document.body.appendChild(errorDiv);
 }
 
+// Highlight recommended neighborhood on map
+function highlightNeighborhood(neighborhoodName, businessType) {
+    // Normalize neighborhood name for lookup
+    const normalizedName = neighborhoodName.toLowerCase().trim();
+
+    // Check if we have coordinates for this neighborhood
+    const neighborhood = ATLANTA_NEIGHBORHOODS[normalizedName];
+
+    if (!neighborhood) {
+        console.log('Unknown neighborhood:', neighborhoodName);
+        return;
+    }
+
+    // Check if already marked
+    const existingMarker = recommendationData.find(r => r.neighborhood === normalizedName);
+    if (existingMarker) {
+        console.log('Neighborhood already marked:', neighborhoodName);
+        return;
+    }
+
+    // Create circular highlight area (approx 1km radius)
+    const circle = L.circle([neighborhood.lat, neighborhood.lon], {
+        color: '#9B59B6',
+        fillColor: '#9B59B6',
+        fillOpacity: 0.15,
+        weight: 3,
+        radius: 1000 // meters
+    }).addTo(map);
+
+    // Create marker
+    const marker = L.marker([neighborhood.lat, neighborhood.lon], {
+        icon: L.divIcon({
+            html: `<div style="background: #9B59B6; width: 30px; height: 30px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 15px rgba(155, 89, 182, 0.8); display: flex; align-items: center; justify-content: center; font-size: 16px;">🎯</div>`,
+            className: 'recommendation-marker',
+            iconSize: [30, 30],
+            iconAnchor: [15, 15]
+        })
+    }).addTo(map);
+
+    // Create popup
+    const popupContent = `
+        <div class="popup-title">🎯 Recommended: ${neighborhood.name}</div>
+        <div class="popup-content">
+            ${businessType ? `<p><strong>For:</strong> ${businessType}</p>` : ''}
+            <p style="color: #9B59B6; font-weight: 500; margin-top: 8px;">Business Advisor Recommendation</p>
+        </div>
+    `;
+
+    marker.bindPopup(popupContent);
+
+    // Store marker and circle
+    recommendationMarkers.push(marker);
+    recommendationMarkers.push(circle);
+    recommendationData.push({
+        neighborhood: normalizedName,
+        businessType: businessType
+    });
+
+    console.log('Highlighted neighborhood:', neighborhood.name, 'for', businessType);
+
+    // Pan to show the recommendation (if not too far from current view)
+    const currentBounds = map.getBounds();
+    const markerLatLng = L.latLng(neighborhood.lat, neighborhood.lon);
+
+    if (!currentBounds.contains(markerLatLng)) {
+        map.setView(markerLatLng, 13, { animate: true });
+    }
+}
+
+// Clear all recommendation markers
+function clearRecommendations() {
+    // Remove all markers and circles from map
+    recommendationMarkers.forEach(marker => {
+        map.removeLayer(marker);
+    });
+
+    // Clear arrays
+    recommendationMarkers = [];
+    recommendationData = [];
+
+    console.log('Cleared all recommendation markers');
+}
+
+// Parse chatbot response and highlight neighborhoods
+function processChatbotRecommendation(response, businessType = null) {
+    // Extract neighborhood names from response
+    const responseText = response.toLowerCase();
+
+    // Check each neighborhood
+    for (const [key, data] of Object.entries(ATLANTA_NEIGHBORHOODS)) {
+        // Check if neighborhood name appears in response
+        // Match variations like "**Midtown**", "Midtown", "midtown", etc.
+        const escapedName = data.name.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(`\\*\\*${escapedName}\\*\\*|\\b${escapedName}\\b`, 'i');
+
+        if (regex.test(responseText)) {
+            highlightNeighborhood(data.name, businessType);
+        }
+    }
+}
+
 // Initialize app
 function init() {
     console.log('Initializing ParkSight...');
@@ -546,6 +1018,12 @@ function init() {
 
     // Load parking data
     loadParkingData();
+
+    // Load garage data
+    loadGarageData();
+
+    // Load street parking data
+    loadStreetParkingData();
 
     console.log('ParkSight initialized');
 }

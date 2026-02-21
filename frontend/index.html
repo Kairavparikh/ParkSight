@@ -171,6 +171,25 @@
                     </div>
                     <input type="range" class="confidence-slider" id="min-confidence" min="0" max="100" value="0">
                 </div>
+
+                <!-- Layer Toggle -->
+                <div class="filter-group">
+                    <div class="filter-label">MAP LAYERS</div>
+                    <label class="layer-toggle">
+                        <input type="checkbox" id="show-garages" checked>
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-label">
+                            <span style="font-size: 14px;">🅿️</span> Parking Garages
+                        </span>
+                    </label>
+                    <label class="layer-toggle" style="margin-top: 8px;">
+                        <input type="checkbox" id="show-street-parking" checked>
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-label">
+                            <span style="font-size: 14px;">🛣️</span> Street Parking
+                        </span>
+                    </label>
+                </div>
             </section>
 
             <!-- Legend -->
@@ -229,7 +248,57 @@
         </main>
     </div>
 
+    <!-- Business Advisor Chatbot -->
+    <button class="chatbot-toggle" id="chatbot-toggle">
+        <span class="chatbot-icon">💼</span>
+        <span class="chatbot-label">Business Advisor</span>
+    </button>
+
+    <div class="chatbot-panel" id="chatbot-panel">
+        <div class="chatbot-header">
+            <div class="chatbot-title">
+                <span style="font-size: 18px;">🎯</span>
+                <span>Atlanta Business Advisor</span>
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <button class="chatbot-close" id="chatbot-clear" style="background: #3498DB; font-size: 14px; padding: 4px 12px;" title="Clear chat">🗑️</button>
+                <button class="chatbot-close" id="chatbot-close">✕</button>
+            </div>
+        </div>
+
+        <div class="chatbot-messages" id="chatbot-messages">
+            <div class="chatbot-message ai-message">
+                <div class="message-avatar">AI</div>
+                <div class="message-content">
+                    Hi! I'm your Atlanta retail site advisor. Tell me what kind of business you want to open and I'll find the best spots based on parking data and neighborhood intelligence.
+                </div>
+            </div>
+        </div>
+
+        <div class="chatbot-suggestions">
+            <button class="suggestion-btn" data-query="Best area for a coffee shop?">
+                ☕ Best area for a coffee shop?
+            </button>
+            <button class="suggestion-btn" data-query="Where should I open a boutique?">
+                👗 Where should I open a boutique?
+            </button>
+        </div>
+
+        <div class="chatbot-input-container">
+            <input
+                type="text"
+                class="chatbot-input"
+                id="chatbot-input"
+                placeholder="Ask about opening a business in Atlanta..."
+            >
+            <button class="chatbot-send" id="chatbot-send">
+                ➤
+            </button>
+        </div>
+    </div>
+
     <!-- App Logic -->
     <script src="app.js"></script>
+    <script src="chatbot.js"></script>
 </body>
 </html>
