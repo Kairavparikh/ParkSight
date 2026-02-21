@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ParkSight - Atlanta Parking Detection</title>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="styles.css">
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- Leaflet Heatmap Plugin -->
+    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+
+    <!-- Chart.js for Analytics -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <!-- Header -->
+            <div class="header">
+                <div class="logo">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+                        <line x1="9" y1="9" x2="9.01" y2="9"/>
+                        <line x1="15" y1="9" x2="15.01" y2="9"/>
+                    </svg>
+                    <span class="logo-text"><span class="logo-park">Park</span><span class="logo-sight">Sight</span></span>
+                </div>
+                <div class="region-badge">ATL</div>
+            </div>
+
+            <!-- Search -->
+            <div class="search-container">
+                <input type="text" id="search" class="search-input" placeholder="Search neighborhoods...">
+            </div>
+
+            <!-- View Toggle -->
+            <div class="view-toggle-container">
+                <button class="view-toggle-btn active" data-view="map">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                        <circle cx="12" cy="10" r="3"/>
+                    </svg>
+                    Map
+                </button>
+                <button class="view-toggle-btn" data-view="heatmap">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <circle cx="12" cy="12" r="6"/>
+                        <circle cx="12" cy="12" r="2"/>
+                    </svg>
+                    Heatmap
+                </button>
+                <button class="view-toggle-btn" data-view="analytics">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="12" y1="20" x2="12" y2="10"/>
+                        <line x1="18" y1="20" x2="18" y2="4"/>
+                        <line x1="6" y1="20" x2="6" y2="16"/>
+                    </svg>
+                    Analytics
+                </button>
+            </div>
+
+            <!-- Aggregate Stats -->
+            <section class="stats-section">
+                <h3 class="section-title">AGGREGATE STATS</h3>
+
+                <div class="stat-grid">
+                    <div class="stat-item">
+                        <div class="stat-icon">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                                <circle cx="12" cy="10" r="3"/>
+                            </svg>
+                        </div>
+                        <div class="stat-content">
+                            <div class="stat-label">LOTS DETECTED</div>
+                            <div class="stat-value" id="lots-count">-</div>
+                        </div>
+                    </div>
+
+                    <div class="stat-item">
+                        <div class="stat-icon">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="3" y="3" width="7" height="7"/>
+                                <rect x="14" y="3" width="7" height="7"/>
+                                <rect x="14" y="14" width="7" height="7"/>
+                                <rect x="3" y="14" width="7" height="7"/>
+                            </svg>
+                        </div>
+                        <div class="stat-content">
+                            <div class="stat-label">EST. SPOTS</div>
+                            <div class="stat-value" id="spots-count">-</div>
+                        </div>
+                    </div>
+
+                    <div class="stat-item">
+                        <div class="stat-icon">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                            </svg>
+                        </div>
+                        <div class="stat-content">
+                            <div class="stat-label">COVERAGE</div>
+                            <div class="stat-value" id="coverage-area">-</div>
+                        </div>
+                    </div>
+
+                    <div class="stat-item">
+                        <div class="stat-icon">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
+                            </svg>
+                        </div>
+                        <div class="stat-content">
+                            <div class="stat-label">AVG LOT SIZE</div>
+                            <div class="stat-value" id="avg-lot-size">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Confidence Meter -->
+                <div class="confidence-section">
+                    <div class="confidence-header">
+                        <span class="confidence-label">AVG CONFIDENCE</span>
+                        <span class="confidence-value" id="avg-confidence">-%</span>
+                    </div>
+                    <div class="confidence-bar-container">
+                        <div class="confidence-bar" id="confidence-bar" style="width: 0%"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Filters -->
+            <section class="filters-section">
+                <h3 class="section-title">FILTERS</h3>
+
+                <!-- Lot Size Filter -->
+                <div class="filter-group">
+                    <div class="filter-label">LOT SIZE</div>
+                    <div class="size-buttons">
+                        <button class="size-btn active" data-size="small">
+                            <span class="size-indicator" style="background: #4ECDC4"></span>
+                            Small<br><span class="size-desc">&lt;50 spots</span>
+                        </button>
+                        <button class="size-btn active" data-size="medium">
+                            <span class="size-indicator" style="background: #FFB84D"></span>
+                            Medium<br><span class="size-desc">50–200</span>
+                        </button>
+                        <button class="size-btn active" data-size="large">
+                            <span class="size-indicator" style="background: #E74C3C"></span>
+                            Large<br><span class="size-desc">200+</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Confidence Filter -->
+                <div class="filter-group">
+                    <div class="filter-label">
+                        MIN CONFIDENCE
+                        <span class="confidence-slider-value" id="min-confidence-value">0%</span>
+                    </div>
+                    <input type="range" class="confidence-slider" id="min-confidence" min="0" max="100" value="0">
+                </div>
+            </section>
+
+            <!-- Legend -->
+            <section class="legend-section">
+                <h3 class="section-title">LOT SIZE LEGEND</h3>
+                <div class="legend-items">
+                    <div class="legend-item">
+                        <span class="legend-color" style="background: #4ECDC4"></span>
+                        <span class="legend-text">Small</span>
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-color" style="background: #FFB84D"></span>
+                        <span class="legend-text">Medium</span>
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-color" style="background: #E74C3C"></span>
+                        <span class="legend-text">Large</span>
+                    </div>
+                </div>
+            </section>
+        </aside>
+
+        <!-- Map Container -->
+        <main class="map-container">
+            <div id="map"></div>
+
+            <!-- Analytics Dashboard (hidden by default) -->
+            <div id="analytics-dashboard" class="analytics-dashboard" style="display: none;">
+                <div class="analytics-header">
+                    <h2>Parking Analytics Dashboard</h2>
+                    <p>Detailed breakdown of detected parking lots</p>
+                </div>
+
+                <div class="charts-grid">
+                    <div class="chart-card">
+                        <h3>Lots by Size Category</h3>
+                        <canvas id="sizeChart"></canvas>
+                    </div>
+
+                    <div class="chart-card">
+                        <h3>Parking Spots Distribution</h3>
+                        <canvas id="spotsChart"></canvas>
+                    </div>
+
+                    <div class="chart-card">
+                        <h3>Confidence Distribution</h3>
+                        <canvas id="confidenceChart"></canvas>
+                    </div>
+
+                    <div class="chart-card">
+                        <h3>Area Distribution (m²)</h3>
+                        <canvas id="areaChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- App Logic -->
+    <script src="app.js"></script>
+</body>
+</html>
